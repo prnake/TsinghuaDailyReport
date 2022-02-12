@@ -19,14 +19,14 @@ headers = {
 
 
 class Report(object):
-    def __init__(self, user_name_, user_pass_):
+    def __init__(self, user_name_, user_pass_, server_id_):
         self.user_name = user_name_
         self.user_pass = user_pass_
 
         self.session = requests.session()
         self.session.headers.update(headers)
 
-        self.server_id = "d42b05be-1ad8-4d96-8c1e-14be2bb24e26"
+        self.server_id = server_id_
         self.resource_id = ""
         self.process_id = ""
         self.user_id = ""
@@ -41,6 +41,23 @@ class Report(object):
 
         self.common_referer = "https://thos.tsinghua.edu.cn/fp/view?m=fp"
 
+        self.headers = {
+            'authority': 'thos.tsinghua.edu.cn',
+            'sec-ch-ua': '" Not A;Brand";v="99", "Chromium";v="98", "Google Chrome";v="98"',
+            'accept': 'application/json, text/javascript, */*; q=0.01',
+            'content-type': 'application/json;charset=UTF-8',
+            'x-requested-with': 'XMLHttpRequest',
+            'sec-ch-ua-mobile': '?0',
+            'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/98.0.4758.80 Safari/537.36',
+            'sec-ch-ua-platform': '"macOS"',
+            'origin': 'https://thos.tsinghua.edu.cn',
+            'sec-fetch-site': 'same-origin',
+            'sec-fetch-mode': 'cors',
+            'sec-fetch-dest': 'empty',
+            'referer': 'https://thos.tsinghua.edu.cn/fp/view?m=fp',
+            'accept-language': 'zh-CN,zh;q=0.9'
+        }
+        
         self.form_data = None
 
     def run(self):
@@ -76,6 +93,7 @@ class Report(object):
             raise RuntimeError("Login Failed")
         else:
             self.session.headers.update(res3.headers)
+            self.cookies = self.session.cookies
             print("登录成功")
 
     def __get_server_info(self):
@@ -88,17 +106,14 @@ class Report(object):
         """
         url_ = "https://thos.tsinghua.edu.cn/fp/fp/serveapply/getServeApply"
 
-        headers_ = self.session.headers
-        headers_["Accept"] = "application/json, text/javascript, */*; q=0.01"
-        headers_["Content-Type"] = "application/json"
-        headers_["Referer"] = self.common_referer
-        headers_["Origin"] = "https://thos.tsinghua.edu.cn"
-        headers_["X-Requested-With"] = "XMLHttpRequest"
-        headers_["Host"] = "thos.tsinghua.edu.cn"
+        
+
+        cookies_ = self.session.cookies
 
         data = {"serveID": self.server_id, "from": "hall"}
         try:
-            response = self.session.post(url=url_, data=json.dumps(data))
+            response = requests.get(url=url_, headers=self.headers,
+                                    cookies=self.cookies, data=json.dumps(data), timeout=60)
             result = response.json()
 
             self.resource_id = result["resource_id"]
@@ -122,14 +137,9 @@ class Report(object):
                                         self.server_id,
                                         self.process_id,
                                         self.privilege_id)
-        headers_ = self.session.headers
-        headers_["Accept"] = "text/html,application/xhtml+xml,application/xml;" \
-                             "q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
-        headers_["Host"] = "thos.tsinghua.edu.cn"
-        headers_["Referer"] = self.common_referer
-        cookies_ = self.session.cookies
 
-        response = requests.get(url=url_, headers=headers, cookies=cookies_, timeout=60)
+        response = requests.get(url=url_, headers=self.headers,
+                                cookies=self.cookies, timeout=60)
         soup = BeautifulSoup(response.text, 'html.parser')
         form_data_str = soup.find("script", attrs={"id": "dcstr"}).contents[0]
 
@@ -154,14 +164,8 @@ class Report(object):
                                                 self.process_id,
                                                 self.privilege_id)
 
-        headers_ = self.session.headers
-        headers_["Origin"] = "https://thos.tsinghua.edu.cn"
-        headers_["Host"] = "thos.tsinghua.edu.cn"
-        headers_["Sec-Fetch-Mode"] = "cors"
-        headers_["Sec-Fetch-Site"] = "same-origin"
-        headers_["Referer"] = referer_url_
-
-        response = self.session.post(url_, data=json.dumps(self.form_data), headers=headers_)
+        response = requests.post(url=url_, headers=self.headers,
+                                cookies=self.cookies, data=json.dumps(self.form_data))
         if response.status_code == requests.codes.OK:
             print("提交健康日报成功")
         else:
@@ -169,11 +173,11 @@ class Report(object):
 
 
 def load_info():
-    with open("conf.ini") as rf:
-        line = rf.readlines()
-        user_name_ = line[0].strip().split("=")[1].strip()
-        user_pass_ = line[1].strip().split("=")[1].strip()
-    return user_name_, user_pass_
+    config = {}
+    with open("conf.ini", "r") as rf:
+        for line in rf.readlines():
+            config[line.split("=")[0]] = line.split("=")[1].strip()
+    return config
 
 
 if __name__ == '__main__':
@@ -183,6 +187,10 @@ if __name__ == '__main__':
         print("User info found in env")
         user_name = os.getenv("USER_NAME")
         user_pass = os.getenv("USER_PASS")
+        server_id = os.getenv("SERVER_ID")
     else:
-        user_name, user_pass = load_info()
-    Report(user_name, user_pass).run()
+        info = load_info()
+        user_name = info["USER_NAME"]
+        user_pass = info["USER_PASS"]
+        server_id = info["SERVER_ID"]
+    Report(user_name, user_pass, server_id).run()
